@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>websocket_test</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"> </script>
+</head>
+
+<body>
+    <!--establish websocket connection -->
+    <div id="vue-token">Token<br>
+        <textarea type="text" id="token" v-model="token" v-bind:style="styleObject"></textarea> <br>
+        <button type="button" v-on:click="connect"
+            v-bind:class="[!isActive ? disconnectedClass:'', isActive ? connectedClass:'']">{{buttonText}}</button>
+        <p id="p1">{{connectionState}}</p>
+    </div>
+
+    <!--send command -->
+    Command
+    <div id="vue-command"> <textarea v-model="message2" type="text" id="command" v-bind:style="styleObject">
+    </textarea> <br>
+        <button v-on:click="sendCommand">发送命令</button><br>
+    </div>
+
+    <!--display results -->
+    <div id="vue-result">呼梯结果：<textarea id=callresult style="width: 100px">{{callResult}}</textarea>分配电梯号：<textarea
+            id=callstate style="width: 300px">{{liftName}}</textarea>乘客提示：<textarea id=guide
+            style="width: 300px">{{guide}}</textarea>
+        <br>电梯当前状态：<textarea id=state style="width: 100px">{{liftState}}</textarea>电梯当前楼层：<textarea id=floor
+            style="width: 100px">{{floor}}</textarea>电梯当前方向：<textarea id=dir
+            style="width: 100px">{{direction}}</textarea>电梯当前载重：<textarea id=dir
+            style="width: 100px">{{load}}</textarea>
+        <br>电梯门状态：<textarea id=state style="width: 100px">{{doorState}}</textarea>电梯当前门楼层：<textarea id=floor
+        style="width: 100px">{{doorArea}}</textarea>电梯门编号：<textarea id=floor
+        style="width: 100px">{{doorID}}</textarea>
+    </div>
+
+
+</body>
+<script type="text/javascript">
+    var ws = null;
+
+    //establish websocket connection
+    var apptoken = new Vue(
+        {
+            el: '#vue-token',
+            data: {
+                token: '',
+                isActive: false,
+                connectedClass: 'connected',
+                disconnectedClass: 'disconnected',
+                buttonText: '连接Websocket',
+                connectionState: '未连接',
+                styleObject: {
+                    width: '620px',
+                    height: '100px',
+                    wordBreak: 'break-all'
+                }
+            },
+            methods: {
+                connect: function (event) {
+                    console.log(Math.round(+new Date())+" Connection starting");
+                    if (this.isActive == false) {
+
+                        this.connectionState = "尝试连接。。";
+                        var wsaddress = "wss://dev.kone.cn/stream-v1?accessToken=" + this.token;
+                        // 创建websocket对象
+                        ws = new WebSocket(wsaddress, "koneapi");
+                        ws.onopen = function (evt) {
+                            console.log(Math.round(+new Date())+" Connection open success");
+                            apptoken.connectionState = "连接成功！";
+                            apptoken.isActive = true;
+                            apptoken.buttonText = '断开连接';
+
+                        };
+
+
+                        ws.onmessage = function (evt) {
+                            console.log(Math.round(+new Date())+" Received Message: " + evt.data);
+                            var callstate = JSON.parse(evt.data);
+                            if (callstate.type == "lift-call-state") {
+                                appResult.callResult = callstate.callStatus;
+                                if (callstate.callStatus == "approved") {
+                                    appResult.liftName = callstate.liftId;
+                                };
+                                appResult.guide = callstate.passengerGuidance;
+                            };
+                            if (callstate.type == "deck-state") {
+                                appResult.floor = callstate.currentLevelMillimeters;
+                                appResult.direction = callstate.movingDirection;
+                                appResult.liftState = callstate.movingState;
+                                appResult.load=callstate.loadState;
+                            };
+                            if (callstate.type == "lift-door-state") {
+                                appResult.doorState = callstate.state;
+                                appResult.doorArea = callstate.currentAreaId;
+                                appResult.doorID = callstate.doorId;
+                                
+                            };
+
+                        };
+                        ws.onerror = function (err) {
+                            console.error(err);
+                            apptoken.connectionState = "连接失败！";
+                            apptoken.isActive = false;
+                            apptoken.buttonText = '连接Websocket';
+
+                        };
+                        ws.onclose = function (evt) {
+
+                            console.log("Connection closed.");
+                            console.log("Close reason: " + evt.code);
+                            apptoken.isActive = false;
+                            apptoken.buttonText = '连接Websocket';
+                            apptoken.connectionState = "连接断开！";
+
+                        };
+                    } else {
+                        try {
+                            ws.close();
+                            apptoken.isActive = false;
+                            apptoken.buttonText = '连接Websocket';
+                            apptoken.connectionState = "未连接";
+                        } catch {
+
+                            apptoken.isActive = false;
+                            apptoken.buttonText = '连接Websocket';
+                            apptoken.connectionState = "未连接";
+                        }
+
+
+                    }
+                }
+            }
+
+        }
+
+    )
+    //send command
+    var appCommand = new Vue({
+        el: '#vue-command',
+        data: {
+            message2: '{\r\
+            "type": "lift-call",\r\
+            "callType": "normal",\r\
+            "callAction": "destination",\r\
+            "requestId": "01841d1c-f4ba-4f9c-a348-6f679bfae86e",\r\
+            "buildingId": "building:9995000520",\r\
+            "sourceId": "area:9995000520:3000",\r\
+            "destinationId": "area:9995000520:10000",\r\
+            "monitorEvents": ["call","deck","door"],\r\
+            "keepAlive":true,\r\
+            "passengerArrivalTimeSeconds":"10"\r\
+        }',
+            styleObject: {
+                width: '620px',
+                height: '240px'
+            }
+
+        }
+        ,
+        methods: {
+            sendCommand: function (event) {
+                console.log(Math.round(+new Date())+" start send command");
+                if (ws != null) {
+                    if (ws.readyState === 1) {
+                        ws.send(document.getElementById("command").value);
+                        console.log("Command sent :" + document.getElementById("command").value);
+                    } else {
+                        console.log("Websocket not connected");
+                        alert("Websocket not connected");
+                    }
+                } else {
+                    console.log("Websocket not connected");
+                    alert("Websocket not connected");
+                }
+            }
+        }
+    })
+    //display result
+    var appResult = new Vue({
+        el: '#vue-result',
+        data: {
+            callResult: '',
+            liftName: '',
+            guide: '',
+            liftState: '',
+            floor: '',
+            direction: '',
+            load:'',
+            doorState:'',
+            doorArea:'',
+            doorID:''
+
+        }
+    })
+
+</script>
+<style>
+    .connected {
+
+        background: rgb(144, 144, 151);
+    }
+
+    .disconnected {
+        background: rgb(92, 153, 233);
+    }
+</style>
+
+
+</html>
